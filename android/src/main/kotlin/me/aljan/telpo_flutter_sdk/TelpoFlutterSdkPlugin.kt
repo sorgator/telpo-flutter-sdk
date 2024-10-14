@@ -57,7 +57,6 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         when (call.method) {
             "connect" -> {
                 if (!_isConnected) {
-
                     val pIntentFilter = IntentFilter()
                     pIntentFilter.addAction(Intent.ACTION_BATTERY_CHANGED)
                     pIntentFilter.addAction("android.intent.action.BATTERY_CAPACITY_EVENT")
@@ -94,41 +93,46 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
             "openScanner" -> {
                 try {
-                    Decode.open(); // open the scanner
-                    result.success(null);
+                    Decode.open() // open the scanner
+                    result.success(null)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error opening the scanner", e)
                     result.error("ERROR:", "failed to open the scanner", e.message)
                 }
             }
             "readWithFormat" -> {
-                val timeout: Int = call.argument<Int>("timeout" ?: 5000) 
+                val timeout: Int = call.argument<Int>("timeout") ?: 5000 // Use a default value if null
                 try {
                     val scanResult: ByteArray = Decode.readWithFormat(timeout)
                     val scanType = scanResult[0]
                     val length = scanResult[1]
-                    val barCodeData = String(scanResult.sliceArray(2 until 2 + length))
+                    if (scanResult.size >= 2 + length) {
+                        val barCodeData = String(scanResult.sliceArray(2 until 2 + length))
 
-                    val response = mapOf(
-                        "type" to scanType,
-                        "length" to length,
-                        "data" to barCodeData
-                    )
-                    result.success(response)
+                        val response = mapOf(
+                            "type" to scanType,
+                            "length" to length,
+                            "data" to barCodeData
+                        )
+                        result.success(response)
+                    } else {
+                        Log.e(TAG, "Invalid scan result")
+                        result.error("ERROR", "Invalid scan result", null)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error reading barcode", e)
                     result.error("ERROR:", "failed to read barcode", e.message)
-                }            
+                }
             }
             "closeScanner" -> {
                 try {
                     Decode.close()
-                    result.success(null);
+                    result.success(null)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error closing the scanner", e)
-                    result.error("ERROR:", "failed to close the scanner", e.errorMessage)
+                    result.error("ERROR:", "failed to close the scanner", e.message)
                 }
-             }
+            }
             else -> {
                 resultWrapper.notImplemented()
             }
@@ -169,9 +173,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 if (status != BatteryManager.BATTERY_STATUS_CHARGING) {
                     lowBattery = level * 5 <= scale
                 }
-            }
-            //
-            else if (action == "android.intent.action.BATTERY_CAPACITY_EVENT") {
+            } else if (action == "android.intent.action.BATTERY_CAPACITY_EVENT") {
                 val status: Int = intent.getIntExtra("action", 0)
                 val level: Int = intent.getIntExtra("level", 0)
 
