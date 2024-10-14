@@ -1,5 +1,4 @@
 import 'dart:developer';
-
 import 'package:flutter/services.dart';
 import 'package:telpo_flutter_sdk/telpo_flutter_sdk.dart';
 
@@ -45,7 +44,6 @@ class TelpoFlutterChannel {
       return connected ?? false;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
-
       return false;
     }
   }
@@ -56,11 +54,9 @@ class TelpoFlutterChannel {
   Future<bool> disconnect() async {
     try {
       final disconnected = await _platform.invokeMethod('disconnect');
-
       return disconnected ?? false;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
-
       return false;
     }
   }
@@ -69,11 +65,9 @@ class TelpoFlutterChannel {
   Future<bool?> isConnected() async {
     try {
       final isConnected = await _platform.invokeMethod('isConnected');
-
       return isConnected ?? false;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
-
       return false;
     }
   }
@@ -105,12 +99,12 @@ class TelpoFlutterChannel {
           return PrintResult.dataCanNotBeTransmitted;
         default:
           log('TELPO EXCEPTION: $e, code: ${e.code}');
-
           return PrintResult.other;
       }
     }
   }
 
+  /// Opens the barcode scanner.
   Future<void> openScanner() async {
     try {
       await _platform.invokeMethod('openScanner');
@@ -119,6 +113,7 @@ class TelpoFlutterChannel {
     }
   }
 
+  /// Reads barcode with format and specified timeout.
   Future<Map<String, dynamic>> readBarcodeWithFormat(int timeout) async {
     try {
       final result =
@@ -130,11 +125,33 @@ class TelpoFlutterChannel {
     }
   }
 
+  /// Closes the barcode scanner.
   Future<void> closeScanner() async {
     try {
       await _platform.invokeMethod('closeScanner');
     } on PlatformException catch (e) {
       log('Telpo exception: $e');
+    }
+  }
+
+  /// Opens the QR scanner using Capture activity.
+  Future<void> openQrScanner() async {
+    try {
+      await _platform.invokeMethod('startQrCodeScan');
+      log('QR scanner opened successfully');
+    } on PlatformException catch (e) {
+      log('Failed to open QR scanner: $e');
+    }
+  }
+
+  /// Reads the result of QR code scanning and returns the QR data.
+  Future<String> startQrCodeScan() async {
+    try {
+      final qrCode = await _platform.invokeMethod('startQrCodeScan');
+      return qrCode;
+    } on PlatformException catch (e) {
+      log('Failed to read QR code: $e');
+      return '';
     }
   }
 }

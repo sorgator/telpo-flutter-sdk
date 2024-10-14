@@ -8,9 +8,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.util.Log
 import androidx.annotation.NonNull
-
 import com.telpo.tps550.api.decode.Decode
-
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -33,6 +31,10 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var telpoThermalPrinter: TelpoThermalPrinter
     public lateinit var registrar: PluginRegistry.Registrar
 
+    // Request code for QR Scanner via Capture activity
+    private val REQUEST_CODE_QR_SCAN = 0x124
+    private lateinit var result: Result
+
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, channelId)
         binding = flutterPluginBinding
@@ -52,6 +54,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
+        this.result = result
         val resultWrapper = MethodChannelResultWrapper(result)
 
         when (call.method) {
@@ -133,8 +136,36 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.error("ERROR:", "failed to close the scanner", e.message)
                 }
             }
+            "startQrCodeScan" -> {
+                openQrScanner()
+            }
             else -> {
                 resultWrapper.notImplemented()
+            }
+        }
+    }
+
+    // Method to open QR scanner using Telpo Capture activity
+    private fun openQrScanner() {
+        try {
+            val intent = Intent()
+            intent.setClassName("com.telpo.tps550.api", "com.telpo.tps550.api.barcode.Capture")
+            activity.startActivityForResult(intent, REQUEST_CODE_QR_SCAN)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening QR scanner", e)
+            result.error("ERROR:", "failed to open QR scanner", e.message)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_CODE_QR_SCAN) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                // Success: Extract the QR code data
+                val qrCode = data.getStringExtra("qrCode")
+                result.success(qrCode)
+            } else {
+                // Failure: Return an error
+                result.error("ERROR", "QR scan failed", null)
             }
         }
     }
