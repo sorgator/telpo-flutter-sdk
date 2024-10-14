@@ -110,4 +110,31 @@ class TelpoFlutterChannel {
       }
     }
   }
+
+  Future<void> openScanner() async {
+    try {
+      await _platform.invokeMethod('openScanner');
+    } on PlatformException catch (e) {
+      log('Telpo exception: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> readBarcodeWithFormat(int timeout) async {
+    try {
+      final result =
+          await _platform.invokeMethod('readWithFormat', {"timeout": timeout});
+      return Map<String, dynamic>.from(result);
+    } on PlatformException catch (e) {
+      log('Telpo exception: $e');
+      return {};
+    }
+  }
+
+  Future<void> closeScanner() async {
+    try {
+      await _platform.invokeMethod('closeScanner');
+    } on PlatformException catch (e) {
+      log('Telpo exception: $e');
+    }
+  }
 }

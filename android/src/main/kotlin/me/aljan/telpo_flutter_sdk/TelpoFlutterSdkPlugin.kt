@@ -9,6 +9,8 @@ import android.os.BatteryManager
 import android.util.Log
 import androidx.annotation.NonNull
 
+import com.telpo.tps550.api.decode
+
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -90,6 +92,43 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
                 telpoThermalPrinter.print(resultWrapper, printDataList, lowBattery)
             }
+            "openScanner" -> {
+                try {
+                    decode.open(); // open the scanner
+                    result.success(null);
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error opening the scanner", e)
+                    result.error("ERROR:", "failed to open the scanner", e.message)
+                }
+            }
+            "readWithFormat" -> {
+                val timeout: Int = call.argument<Int>("timeout" ?: 5000) 
+                try {
+                    val scanResult: ByteArray = decode.readWithFormat(timeout)
+                    val scanType = scanResult[0]
+                    val length = scanResult[1]
+                    val barCodeData = String(scanResult.sliceArray(2 until 2 + length))
+
+                    val response = mapOf(
+                        "type" to scanType,
+                        "length" to length,
+                        "data" to barCodeData
+                    )
+                    result.success(response)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading barcode", e)
+                    result.error("ERROR:", "failed to read barcode", e.message)
+                }            
+            }
+            "closeScanner" -> {
+                try {
+                    decode.close()
+                    result.success(null);
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error closing the scanner", e)
+                    result.error("ERROR:", "failed to close the scanner", e.errorMessage)
+                }
+             }
             else -> {
                 resultWrapper.notImplemented()
             }
