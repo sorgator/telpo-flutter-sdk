@@ -9,7 +9,7 @@ import android.os.BatteryManager
 import android.util.Log
 import androidx.annotation.NonNull
 
-import com.telpo.tps550.api.decode
+import com.telpo.tps550.api.decode.Decode
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -94,7 +94,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
             "openScanner" -> {
                 try {
-                    decode.open(); // open the scanner
+                    Decode.open(); // open the scanner
                     result.success(null);
                 } catch (e: Exception) {
                     Log.e(TAG, "Error opening the scanner", e)
@@ -104,7 +104,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             "readWithFormat" -> {
                 val timeout: Int = call.argument<Int>("timeout" ?: 5000) 
                 try {
-                    val scanResult: ByteArray = decode.readWithFormat(timeout)
+                    val scanResult: ByteArray = Decode.readWithFormat(timeout)
                     val scanType = scanResult[0]
                     val length = scanResult[1]
                     val barCodeData = String(scanResult.sliceArray(2 until 2 + length))
@@ -122,7 +122,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
             "closeScanner" -> {
                 try {
-                    decode.close()
+                    Decode.close()
                     result.success(null);
                 } catch (e: Exception) {
                     Log.e(TAG, "Error closing the scanner", e)
