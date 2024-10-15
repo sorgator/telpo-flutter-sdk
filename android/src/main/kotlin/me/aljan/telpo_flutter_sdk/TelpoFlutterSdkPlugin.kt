@@ -30,6 +30,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var context: Context
     private lateinit var activity: Activity
     private lateinit var binding: FlutterPlugin.FlutterPluginBinding
+    private lateinit var telpoThermalPrinter: TelpoThermalPrinter
 
     private var activityPluginBinding: ActivityPluginBinding? = null
     private val REQUEST_CODE_QR_SCAN = 0x124
@@ -39,6 +40,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, channelId)
         binding = flutterPluginBinding
         context = flutterPluginBinding.applicationContext
+        telpoThermalPrinter = TelpoThermalPrinter(this@TelpoFlutterSdkPlugin)
         channel.setMethodCallHandler(this)
     }
 
@@ -53,7 +55,42 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         this.result = result
+        val resultWrapper = MethodChannelResultWrapper(result)
+
         when (call.method) {
+            "connect" -> {
+                if (!_isConnected) {
+                    val pIntentFilter = IntentFilter()
+                    pIntentFilter.addAction(Intent.ACTION_BATTERY_CHANGED)
+                    pIntentFilter.addAction("android.intent.action.BATTERY_CAPACITY_EVENT")
+
+                    context.registerReceiver(printReceive, pIntentFilter)
+                    val isConnected = telpoThermalPrinter.connect()
+                    _isConnected = isConnected
+                    Log.d(TAG, "connected")
+                    resultWrapper.success(_isConnected)
+                }
+            }
+            "checkStatus" -> {
+                telpoThermalPrinter.checkStatus(resultWrapper, lowBattery)
+            }
+            "isConnected" -> {
+                resultWrapper.success(_isConnected)
+            }
+            "disconnect" -> {
+                if (_isConnected) {
+                    Log.d(TAG, "disconnected")
+                    context.unregisterReceiver(printReceive)
+                    val disconnected = telpoThermalPrinter.disconnect()
+                    _isConnected = false
+                    resultWrapper.success(disconnected)
+                }
+            }
+            "print" -> {
+                val printDataList =
+                    call.argument<ArrayList<Map<String, Any>>>("data") ?: ArrayList()
+                telpoThermalPrinter.print(resultWrapper, printDataList, lowBattery)
+            }
             "openSoftScanner" -> {
                 // Soft decoding (using Telpo API Capture activity)
                 openSoftScanner()
@@ -72,7 +109,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 }
             }
             else -> {
-                result.notImplemented()
+                resultWrapper.notImplemented()
             }
         }
     }
