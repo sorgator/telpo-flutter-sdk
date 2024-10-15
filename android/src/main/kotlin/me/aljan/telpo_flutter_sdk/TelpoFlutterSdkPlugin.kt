@@ -1,14 +1,17 @@
 package me.aljan.telpo_flutter_sdk
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.NonNull
 import com.telpo.tps550.api.decode.Decode
+import com.telpo.tps550.api.decode.DecodeReaderActivity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -18,20 +21,17 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
 
-/** TelpoFlutterSdkPlugin */
 class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private val TAG = "TelpoFlutterSdkPlugin"
     private lateinit var channel: MethodChannel
     private val channelId = "me.aljan.telpo_flutter_sdk/telpo"
     private var lowBattery = false
     private var _isConnected = false
-    lateinit var context: Context
+    private lateinit var context: Context
     private lateinit var activity: Activity
     private lateinit var binding: FlutterPlugin.FlutterPluginBinding
-    private lateinit var telpoThermalPrinter: TelpoThermalPrinter
-    public lateinit var registrar: PluginRegistry.Registrar
 
-    // Request code for QR Scanner via Capture activity
+    private var activityPluginBinding: ActivityPluginBinding? = null
     private val REQUEST_CODE_QR_SCAN = 0x124
     private lateinit var result: Result
 
@@ -39,7 +39,6 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, channelId)
         binding = flutterPluginBinding
         context = flutterPluginBinding.applicationContext
-        telpoThermalPrinter = TelpoThermalPrinter(this@TelpoFlutterSdkPlugin)
         channel.setMethodCallHandler(this)
     }
 
@@ -47,85 +46,21 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         @JvmStatic
         fun registerWith(registrar: PluginRegistry.Registrar) {
             val channel = MethodChannel(registrar.messenger(), TelpoFlutterSdkPlugin().channelId)
-            val plugin = TelpoFlutterSdkPlugin();
-            channel.setMethodCallHandler(plugin);
-            TelpoFlutterSdkPlugin().registrar = registrar;
+            val plugin = TelpoFlutterSdkPlugin()
+            channel.setMethodCallHandler(plugin)
         }
     }
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         this.result = result
-        val resultWrapper = MethodChannelResultWrapper(result)
-
         when (call.method) {
-            "connect" -> {
-                if (!_isConnected) {
-                    val pIntentFilter = IntentFilter()
-                    pIntentFilter.addAction(Intent.ACTION_BATTERY_CHANGED)
-                    pIntentFilter.addAction("android.intent.action.BATTERY_CAPACITY_EVENT")
-
-                    context.registerReceiver(printReceive, pIntentFilter)
-                    val isConnected = telpoThermalPrinter.connect()
-                    _isConnected = isConnected
-
-                    Log.d(TAG, "connected")
-                    resultWrapper.success(_isConnected)
-                }
+            "openSoftScanner" -> {
+                // Soft decoding (using Telpo API Capture activity)
+                openSoftScanner()
             }
-            "checkStatus" -> {
-                telpoThermalPrinter.checkStatus(resultWrapper, lowBattery)
-            }
-            "isConnected" -> {
-                resultWrapper.success(_isConnected)
-            }
-            "disconnect" -> {
-                if (_isConnected) {
-                    Log.d(TAG, "disconnected")
-
-                    context.unregisterReceiver(printReceive)
-                    val disconnected = telpoThermalPrinter.disconnect()
-                    _isConnected = false
-                    resultWrapper.success(disconnected)
-                }
-            }
-            "print" -> {
-                val printDataList =
-                    call.argument<ArrayList<Map<String, Any>>>("data") ?: ArrayList()
-
-                telpoThermalPrinter.print(resultWrapper, printDataList, lowBattery)
-            }
-            "openScanner" -> {
-                try {
-                    Decode.open() // open the scanner
-                    result.success(null)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error opening the scanner", e)
-                    result.error("ERROR:", "failed to open the scanner", e.message)
-                }
-            }
-            "readWithFormat" -> {
-                val timeout: Int = call.argument<Int>("timeout") ?: 5000 // Use a default value if null
-                try {
-                    val scanResult: ByteArray = Decode.readWithFormat(timeout)
-                    val scanType = scanResult[0]
-                    val length = scanResult[1]
-                    if (scanResult.size >= 2 + length) {
-                        val barCodeData = String(scanResult.sliceArray(2 until 2 + length))
-
-                        val response = mapOf(
-                            "type" to scanType,
-                            "length" to length,
-                            "data" to barCodeData
-                        )
-                        result.success(response)
-                    } else {
-                        Log.e(TAG, "Invalid scan result")
-                        result.error("ERROR", "Invalid scan result", null)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error reading barcode", e)
-                    result.error("ERROR:", "failed to read barcode", e.message)
-                }
+            "openHardScanner" -> {
+                // Hard decoding (custom activity for hard decoding)
+                openHardScanner()
             }
             "closeScanner" -> {
                 try {
@@ -136,38 +71,56 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.error("ERROR:", "failed to close the scanner", e.message)
                 }
             }
-            "startQrCodeScan" -> {
-                openQrScanner()
-            }
             else -> {
-                resultWrapper.notImplemented()
+                result.notImplemented()
             }
         }
     }
 
-    // Method to open QR scanner using Telpo Capture activity
-    private fun openQrScanner() {
+    private fun openSoftScanner() {
         try {
             val intent = Intent()
             intent.setClassName("com.telpo.tps550.api", "com.telpo.tps550.api.barcode.Capture")
-            activity.startActivityForResult(intent, REQUEST_CODE_QR_SCAN)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening QR scanner", e)
-            result.error("ERROR:", "failed to open QR scanner", e.message)
+            activityPluginBinding?.activity?.startActivityForResult(intent, REQUEST_CODE_QR_SCAN)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Soft decoding app not found", Toast.LENGTH_LONG).show()
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == REQUEST_CODE_QR_SCAN) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                // Success: Extract the QR code data
-                val qrCode = data.getStringExtra("qrCode")
-                result.success(qrCode)
+    private fun openHardScanner() {
+        // Launch the custom activity for hard decoding
+        val intent = Intent(activity, DecodeReaderActivity::class.java)
+        activityPluginBinding?.activity?.startActivity(intent)
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityPluginBinding = binding
+        activity = binding.activity
+        activityPluginBinding?.addActivityResultListener { requestCode, resultCode, data ->
+            if (requestCode == REQUEST_CODE_QR_SCAN) {
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    val qrCode = data.getStringExtra("qrCode")
+                    result.success(qrCode)
+                } else {
+                    result.error("ERROR", "QR scan failed", null)
+                }
+                true
             } else {
-                // Failure: Return an error
-                result.error("ERROR", "QR scan failed", null)
+                false
             }
         }
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activityPluginBinding = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        onAttachedToActivity(binding)
+    }
+
+    override fun onDetachedFromActivity() {
+        activityPluginBinding = null
     }
 
     override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
@@ -177,22 +130,9 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         channel.setMethodCallHandler(null)
     }
 
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        activity = binding.activity
-    }
-
-    override fun onDetachedFromActivityForConfigChanges() {}
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        activity = binding.activity
-    }
-
-    override fun onDetachedFromActivity() {}
-
     private val printReceive: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action
-
             if (action == Intent.ACTION_BATTERY_CHANGED) {
                 val status = intent.getIntExtra(
                     BatteryManager.EXTRA_STATUS,
