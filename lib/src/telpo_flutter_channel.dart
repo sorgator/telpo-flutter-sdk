@@ -15,7 +15,7 @@ class TelpoFlutterChannel {
   /// underlying Telpo Device.
   Future<TelpoStatus> checkStatus() async {
     try {
-      final status = await _platform.invokeMethod('checkStatus');
+      final status = await _platform.invokeMethod<String>('checkStatus');
 
       switch (status) {
         case 'STATUS_OK':
@@ -24,23 +24,20 @@ class TelpoFlutterChannel {
           return TelpoStatus.noPaper;
         case 'STATUS_OVER_FLOW':
           return TelpoStatus.cacheIsFull;
-
-        case 'STATUS_OVER_UNKNOWN':
         default:
           return TelpoStatus.unknown;
       }
-    } catch (_) {
+    } catch (e) {
+      log('Failed to check status: $e');
       return TelpoStatus.unknown;
     }
   }
 
   /// Connect with underlying Telpo device if any.
-  ///
-  /// Returns a [bool] whether connected successfully or not.
+  /// Returns a [bool] indicating whether connected successfully or not.
   Future<bool> connect() async {
     try {
-      final connected = await _platform.invokeMethod('connect');
-
+      final connected = await _platform.invokeMethod<bool>('connect');
       return connected ?? false;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
@@ -49,11 +46,10 @@ class TelpoFlutterChannel {
   }
 
   /// Disconnect from Telpo device.
-  ///
-  /// Returns a [bool] whether disconnected successfully or not.
+  /// Returns a [bool] indicating whether disconnected successfully or not.
   Future<bool> disconnect() async {
     try {
-      final disconnected = await _platform.invokeMethod('disconnect');
+      final disconnected = await _platform.invokeMethod<bool>('disconnect');
       return disconnected ?? false;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
@@ -64,8 +60,8 @@ class TelpoFlutterChannel {
   /// Returns a nullable [bool] whether or not connected with Telpo device.
   Future<bool?> isConnected() async {
     try {
-      final isConnected = await _platform.invokeMethod('isConnected');
-      return isConnected ?? false;
+      final isConnected = await _platform.invokeMethod<bool>('isConnected');
+      return isConnected;
     } catch (e) {
       log('TELPO EXCEPTION: $e');
       return false;
@@ -73,10 +69,7 @@ class TelpoFlutterChannel {
   }
 
   /// Takes [List<PrintData>] to be printed and returns [PrintResult] enum as
-  /// an indicator for result of the process
-  ///
-  /// If [PrintResult.success] the data printed successfully, if else process
-  /// blocked by some exception. See the result enum for more info.
+  /// an indicator for result of the process.
   Future<PrintResult> print(TelpoPrintSheet data) async {
     try {
       await _platform.invokeMethod(
@@ -85,7 +78,6 @@ class TelpoFlutterChannel {
           "data": data.asJson,
         },
       );
-
       return PrintResult.success;
     } on PlatformException catch (e) {
       switch (e.code) {
@@ -104,54 +96,46 @@ class TelpoFlutterChannel {
     }
   }
 
-  /// Opens the barcode scanner.
-  Future<void> openScanner() async {
-    try {
-      await _platform.invokeMethod('openScanner');
-    } on PlatformException catch (e) {
-      log('Telpo exception: $e');
-    }
-  }
-
-  /// Reads barcode with format and specified timeout.
+  /// Read barcode with timeout (in milliseconds).
+  /// Returns a map with the type, length, and data of the barcode.
   Future<Map<String, dynamic>> readBarcodeWithFormat(int timeout) async {
     try {
-      final result =
-          await _platform.invokeMethod('readWithFormat', {"timeout": timeout});
-      return Map<String, dynamic>.from(result);
+      final result = await _platform
+          .invokeMethod<Map>('readWithFormat', {"timeout": timeout});
+      return Map<String, dynamic>.from(result ?? {});
     } on PlatformException catch (e) {
       log('Telpo exception: $e');
       return {};
     }
   }
 
-  /// Closes the barcode scanner.
+  /// Open the software 2D barcode scanner (Soft Decoding).
+  Future<void> openSoftScanner() async {
+    try {
+      await _platform.invokeMethod('openSoftScanner');
+      log('Soft scanner opened successfully');
+    } on PlatformException catch (e) {
+      log('Failed to open soft scanner: $e');
+    }
+  }
+
+  /// Open the hard 2D barcode scanner (Hard Decoding).
+  Future<void> openHardScanner() async {
+    try {
+      await _platform.invokeMethod('openHardScanner');
+      log('Hard scanner opened successfully');
+    } on PlatformException catch (e) {
+      log('Failed to open hard scanner: $e');
+    }
+  }
+
+  /// Close the 2D barcode scanner.
   Future<void> closeScanner() async {
     try {
       await _platform.invokeMethod('closeScanner');
+      log('Scanner closed successfully');
     } on PlatformException catch (e) {
-      log('Telpo exception: $e');
-    }
-  }
-
-  /// Opens the QR scanner using Capture activity.
-  Future<void> openQrScanner() async {
-    try {
-      await _platform.invokeMethod('startQrCodeScan');
-      log('QR scanner opened successfully');
-    } on PlatformException catch (e) {
-      log('Failed to open QR scanner: $e');
-    }
-  }
-
-  /// Reads the result of QR code scanning and returns the QR data.
-  Future<String> startQrCodeScan() async {
-    try {
-      final qrCode = await _platform.invokeMethod('startQrCodeScan');
-      return qrCode;
-    } on PlatformException catch (e) {
-      log('Failed to read QR code: $e');
-      return '';
+      log('Failed to close scanner: $e');
     }
   }
 }
