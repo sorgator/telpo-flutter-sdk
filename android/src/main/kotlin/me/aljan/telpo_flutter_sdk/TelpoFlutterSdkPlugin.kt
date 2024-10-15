@@ -1,6 +1,7 @@
 package me.aljan.telpo_flutter_sdk
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,39 +11,39 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.NonNull
 import com.common.apiutil.decode.DecodeReader
-import com.common.apiutil.decode.IDecodeReaderListener
+import com.common.callback.IDecodeReaderListener
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
-import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.common.MethodChannel.Result as FlutterResult
 import io.flutter.plugin.common.PluginRegistry
 
+/** TelpoFlutterSdkPlugin */
 class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private val TAG = "TelpoFlutterSdkPlugin"
     private lateinit var channel: MethodChannel
     private val channelId = "me.aljan.telpo_flutter_sdk/telpo"
     private var lowBattery = false
     private var _isConnected = false
-    private lateinit var context: Context
+    lateinit var context: Context
     private lateinit var activity: Activity
     private lateinit var binding: FlutterPlugin.FlutterPluginBinding
     private lateinit var telpoThermalPrinter: TelpoThermalPrinter
-    private var decodeReader: DecodeReader? = null
+    private lateinit var decodeReader: DecodeReader // Initialize DecodeReader
 
     private var activityPluginBinding: ActivityPluginBinding? = null
     private val REQUEST_CODE_QR_SCAN = 0x124
-    private lateinit var result: Result
 
     override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, channelId)
         binding = flutterPluginBinding
         context = flutterPluginBinding.applicationContext
         telpoThermalPrinter = TelpoThermalPrinter(this@TelpoFlutterSdkPlugin)
+        decodeReader = DecodeReader(context) // Initialize DecodeReader with context
         channel.setMethodCallHandler(this)
-        decodeReader = DecodeReader(context)
     }
 
     companion object {
@@ -54,9 +55,8 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
     }
 
-    override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
-        this.result = result
-        val resultWrapper = MethodChannelResultWrapper(result)
+    override fun onMethodCall(@NonNull call: MethodCall, @NonNull flutterResult: FlutterResult) {
+        val resultWrapper = MethodChannelResultWrapper(flutterResult)
 
         when (call.method) {
             "connect" -> {
@@ -93,13 +93,13 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 telpoThermalPrinter.print(resultWrapper, printDataList, lowBattery)
             }
             "openSoftScanner" -> {
-                openSoftScanner()
+                openSoftScanner(flutterResult)
             }
             "openHardScanner" -> {
-                openHardScanner()
+                openHardScanner(flutterResult)
             }
             "closeScanner" -> {
-                closeScanner()
+                closeScanner(flutterResult)
             }
             else -> {
                 resultWrapper.notImplemented()
@@ -107,26 +107,29 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
     }
 
-    private fun openSoftScanner() {
+    private fun openSoftScanner(result: FlutterResult) {
         try {
             val intent = Intent()
             intent.setClassName("com.telpo.tps550.api", "com.telpo.tps550.api.barcode.Capture")
-            activityPluginBinding?.activity?.startActivityForResult(intent, REQUEST_CODE_QR_SCAN)
+            activity.startActivityForResult(intent, REQUEST_CODE_QR_SCAN)
         } catch (e: ActivityNotFoundException) {
             Toast.makeText(context, "Soft decoding app not found", Toast.LENGTH_LONG).show()
+            result.error("ERROR", "Soft decoding app not found", e.message)
         }
     }
 
-    private fun openHardScanner() {
+    private fun openHardScanner(result: FlutterResult) {
         try {
-            val openResult = decodeReader?.open(115200) // Open with baud rate 115200
+            val openResult = decodeReader.open(115200) // Open with baud rate 115200
             if (openResult == 0) {
-                decodeReader?.setDecodeListener(object : IDecodeReaderListener {
+                decodeReader.setDecodeReaderListener(object : IDecodeReaderListener {
                     override fun onRecvData(data: ByteArray) {
                         // Handle received data
                         val scannedData = String(data)
                         Log.d(TAG, "Scanned Data: $scannedData")
-                        result.success(scannedData)
+                        activity.runOnUiThread {
+                            result.success(scannedData)
+                        }
                     }
                 })
                 Log.d(TAG, "Hard scanner opened successfully.")
@@ -140,9 +143,9 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
     }
 
-    private fun closeScanner() {
+    private fun closeScanner(result: FlutterResult) {
         try {
-            val closeResult = decodeReader?.close()
+            val closeResult = decodeReader.close()
             if (closeResult == 0) {
                 Log.d(TAG, "Scanner closed successfully.")
                 result.success(null)
@@ -156,42 +159,24 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
     }
 
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        activityPluginBinding = binding
-        activity = binding.activity
-        activityPluginBinding?.addActivityResultListener { requestCode, resultCode, data ->
-            if (requestCode == REQUEST_CODE_QR_SCAN) {
-                if (resultCode == Activity.RESULT_OK && data != null) {
-                    val qrCode = data.getStringExtra("qrCode")
-                    result.success(qrCode)
-                } else {
-                    result.error("ERROR", "QR scan failed", null)
-                }
-                true
-            } else {
-                false
-            }
-        }
-    }
-
-    override fun onDetachedFromActivityForConfigChanges() {
-        activityPluginBinding = null
-    }
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        onAttachedToActivity(binding)
-    }
-
-    override fun onDetachedFromActivity() {
-        activityPluginBinding = null
-    }
-
     override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
         if (_isConnected) {
             context.unregisterReceiver(printReceive)
         }
         channel.setMethodCallHandler(null)
     }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {}
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivity() {}
 
     private val printReceive: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
