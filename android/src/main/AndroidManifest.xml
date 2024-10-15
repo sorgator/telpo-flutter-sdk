@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="me.aljan.telpo_flutter_sdk">
 
+    <!-- Features required by the app -->
     <uses-feature
         android:name="android.hardware.usb.host"
         android:required="false" />
@@ -9,9 +10,31 @@
         android:name="android.hardware.nfc"
         android:required="false" />
 
-    <application>
-        <activity
-            android:name="com.telpo.tps550.api.decode.DecodeReaderActivity"
+    <!-- Required permissions -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- Metadata for libraries and integrations -->
+    <application
+        android:allowBackup="true"
+        android:label="Telpo Flutter SDK"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault.Light">
+
+        <!-- Activity for the Telpo SDK -->
+        <activity android:name="com.telpo.tps550.api.decode.DecodeReaderActivity"
+            android:label="Decode Reader"
+            android:exported="true" />
+
+        <!-- Example activity to handle QR scanner -->
+        <activity android:name="com.telpo.tps550.api.barcode.Capture"
+            android:label="Capture Barcode"
             android:exported="true" />
     </application>
+
 </manifest>
