@@ -55,4 +55,5 @@ dependencies {
     implementation files('src/libs/zkandroidnidfpsensor.jar')
     implementation 'com.github.ChickenHook:RestrictionBypass:2.2'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0@aar'
+    implementation files('src\\libs\\demoSDK_v2.19.20240620.aar')
 }

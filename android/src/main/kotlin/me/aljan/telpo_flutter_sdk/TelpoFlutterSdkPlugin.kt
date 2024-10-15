@@ -1,7 +1,6 @@
 package me.aljan.telpo_flutter_sdk
 
 import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,8 +9,8 @@ import android.os.BatteryManager
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.NonNull
-import com.telpo.tps550.api.decode.Decode
-import com.telpo.tps550.api.decode.DecodeReaderActivity
+import com.common.apiutil.decode.DecodeReader
+import com.common.apiutil.decode.IDecodeReaderListener
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -31,6 +30,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var activity: Activity
     private lateinit var binding: FlutterPlugin.FlutterPluginBinding
     private lateinit var telpoThermalPrinter: TelpoThermalPrinter
+    private var decodeReader: DecodeReader? = null
 
     private var activityPluginBinding: ActivityPluginBinding? = null
     private val REQUEST_CODE_QR_SCAN = 0x124
@@ -42,6 +42,7 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         context = flutterPluginBinding.applicationContext
         telpoThermalPrinter = TelpoThermalPrinter(this@TelpoFlutterSdkPlugin)
         channel.setMethodCallHandler(this)
+        decodeReader = DecodeReader(context)
     }
 
     companion object {
@@ -92,21 +93,13 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 telpoThermalPrinter.print(resultWrapper, printDataList, lowBattery)
             }
             "openSoftScanner" -> {
-                // Soft decoding (using Telpo API Capture activity)
                 openSoftScanner()
             }
             "openHardScanner" -> {
-                // Hard decoding (custom activity for hard decoding)
                 openHardScanner()
             }
             "closeScanner" -> {
-                try {
-                    Decode.close()
-                    result.success(null)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error closing the scanner", e)
-                    result.error("ERROR:", "failed to close the scanner", e.message)
-                }
+                closeScanner()
             }
             else -> {
                 resultWrapper.notImplemented()
@@ -125,9 +118,42 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     }
 
     private fun openHardScanner() {
-        // Launch the custom activity for hard decoding
-        val intent = Intent(activity, DecodeReaderActivity::class.java)
-        activityPluginBinding?.activity?.startActivity(intent)
+        try {
+            val openResult = decodeReader?.open(115200) // Open with baud rate 115200
+            if (openResult == 0) {
+                decodeReader?.setDecodeListener(object : IDecodeReaderListener {
+                    override fun onRecvData(data: ByteArray) {
+                        // Handle received data
+                        val scannedData = String(data)
+                        Log.d(TAG, "Scanned Data: $scannedData")
+                        result.success(scannedData)
+                    }
+                })
+                Log.d(TAG, "Hard scanner opened successfully.")
+            } else {
+                Log.e(TAG, "Failed to open hard scanner, result code: $openResult")
+                result.error("ERROR", "Failed to open hard scanner", null)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening hard scanner", e)
+            result.error("ERROR", "Error opening hard scanner: ${e.message}", null)
+        }
+    }
+
+    private fun closeScanner() {
+        try {
+            val closeResult = decodeReader?.close()
+            if (closeResult == 0) {
+                Log.d(TAG, "Scanner closed successfully.")
+                result.success(null)
+            } else {
+                Log.e(TAG, "Failed to close scanner, result code: $closeResult")
+                result.error("ERROR", "Failed to close scanner", null)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing the scanner", e)
+            result.error("ERROR", "Error closing scanner: ${e.message}", null)
+        }
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
