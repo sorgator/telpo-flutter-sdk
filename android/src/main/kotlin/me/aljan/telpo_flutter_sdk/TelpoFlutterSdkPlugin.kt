@@ -60,7 +60,6 @@ class TelpoFlutterSdkPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
         })
     }
-//test
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull flutterResult: MethodChannel.Result) {
         val resultWrapper = MethodChannelResultWrapper(flutterResult)
